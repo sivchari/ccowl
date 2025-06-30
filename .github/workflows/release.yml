@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            name: ccowl-linux-amd64
+          - os: ubuntu-latest
+            goos: linux
+            goarch: arm64
+            name: ccowl-linux-arm64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+            name: ccowl-darwin-amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+            name: ccowl-darwin-arm64
+          - os: windows-latest
+            goos: windows
+            goarch: amd64
+            name: ccowl-windows-amd64.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          if [ "${{ matrix.goarch }}" = "arm64" ]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+            sudo apt-get install -y libgtk-3-dev:arm64 libayatana-appindicator3-dev:arm64 || true
+          else
+            sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
+          fi
+
+      - name: Build binary (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          $env:CGO_ENABLED="1"
+          $env:GOOS="${{ matrix.goos }}"
+          $env:GOARCH="${{ matrix.goarch }}"
+          go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
+        shell: pwsh
+
+      - name: Build binary (Linux ARM64)
+        if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
+        run: |
+          CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CC=aarch64-linux-gnu-gcc go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
+        shell: bash
+
+      - name: Build binary (Other)
+        if: matrix.os != 'windows-latest' && !(matrix.goos == 'linux' && matrix.goarch == 'arm64')
+        run: |
+          CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ matrix.name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ccowl-linux-amd64/ccowl-linux-amd64
+            ccowl-linux-arm64/ccowl-linux-arm64
+            ccowl-darwin-amd64/ccowl-darwin-amd64
+            ccowl-darwin-arm64/ccowl-darwin-arm64
+            ccowl-windows-amd64.exe/ccowl-windows-amd64.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
