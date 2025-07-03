@@ -29,6 +29,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-go-
 
+    - name: Install Linux dependencies
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
+
     - name: Download dependencies
       run: go mod download
 
