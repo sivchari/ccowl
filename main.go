@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/getlantern/systray"
+	"fyne.io/systray"
 )
 
 type TokenCounts struct {
@@ -62,7 +62,7 @@ func init() {
 			lang = os.Getenv("LC_MESSAGES")
 		}
 	}
-
+	
 	// Check if Japanese locale is set
 	isJapanese = strings.HasPrefix(strings.ToLower(lang), "ja")
 }
@@ -137,7 +137,7 @@ func formatDetailedInfo(block Block) []string {
 	burnRateStatus := getBurnRateStatus(block.BurnRate.TokensPerMinute)
 
 	return []string{
-		fmt.Sprintf("⏱️ %s: %s %s / %s %s",
+		fmt.Sprintf("⏱️ %s: %s %s / %s %s", 
 			t("Session", "セッション"),
 			t("Started", "開始"), startTime,
 			t("Remaining", "残り"), remaining),
