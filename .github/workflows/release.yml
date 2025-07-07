@@ -18,7 +18,7 @@ jobs:
             goarch: amd64
             name: ccowl-linux-amd64
             dockerfile: |
-              FROM --platform=linux/amd64 golang:1.24-bullseye
+              FROM golang:1.24-bullseye
               RUN apt-get update && apt-get install -y \
                   gcc \
                   pkg-config \
@@ -30,7 +30,7 @@ jobs:
             goarch: arm64
             name: ccowl-linux-arm64
             dockerfile: |
-              FROM --platform=linux/arm64 golang:1.24-bullseye
+              FROM golang:1.24-bullseye
               RUN apt-get update && apt-get install -y \
                   gcc \
                   pkg-config \
@@ -42,46 +42,39 @@ jobs:
             goarch: amd64
             name: ccowl-darwin-amd64
             dockerfile: |
-              FROM --platform=linux/amd64 golang:1.24-bullseye
+              FROM golang:1.24-bullseye
               RUN apt-get update && apt-get install -y \
                   clang \
                   libc6-dev \
                   pkg-config
-              ENV CGO_ENABLED=1
+              ENV CGO_ENABLED=0
               ENV GOOS=darwin
               ENV GOARCH=amd64
-              ENV CC=clang
-              ENV CGO_CFLAGS="-O2 -g"
-              ENV CGO_LDFLAGS=""
           - platform: linux/amd64
             goos: darwin
             goarch: arm64
             name: ccowl-darwin-arm64
             dockerfile: |
-              FROM --platform=linux/amd64 golang:1.24-bullseye
+              FROM golang:1.24-bullseye
               RUN apt-get update && apt-get install -y \
                   clang \
                   libc6-dev \
                   pkg-config
-              ENV CGO_ENABLED=1
+              ENV CGO_ENABLED=0
               ENV GOOS=darwin
               ENV GOARCH=arm64
-              ENV CC=clang
-              ENV CGO_CFLAGS="-O2 -g -target arm64-apple-macos10.12"
-              ENV CGO_LDFLAGS="-target arm64-apple-macos10.12"
           - platform: linux/amd64
             goos: windows
             goarch: amd64
             name: ccowl-windows-amd64.exe
             dockerfile: |
-              FROM --platform=linux/amd64 golang:1.24-bullseye
+              FROM golang:1.24-bullseye
               RUN apt-get update && apt-get install -y \
                   gcc-mingw-w64-x86-64 \
                   pkg-config
-              ENV CGO_ENABLED=1
+              ENV CGO_ENABLED=0
               ENV GOOS=windows
               ENV GOARCH=amd64
-              ENV CC=x86_64-w64-mingw32-gcc
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -94,11 +87,11 @@ jobs:
         run: |
           cat > Dockerfile.build <<EOF
           ${{ matrix.dockerfile }}
-          RUN useradd -m -u 1000 builder
-          USER builder
-          WORKDIR /src
-          COPY --chown=builder:builder . .
-          RUN go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
+          WORKDIR /tmp/build
+          COPY . .
+          RUN chmod -R 777 /tmp/build && \
+              go mod download && \
+              go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
           EOF
           docker buildx build --platform ${{ matrix.platform }} --output type=local,dest=. -f Dockerfile.build .
 
