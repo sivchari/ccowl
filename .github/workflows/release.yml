@@ -48,8 +48,11 @@ jobs:
         run: |
           sudo apt-get update
           if [ "${{ matrix.goarch }}" = "arm64" ]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu
-            sudo apt-get install -y libgtk-3-dev:arm64 libayatana-appindicator3.0.1.pc || true
+            sudo dpkg --add-architecture arm64
+            sudo apt-get update
+            sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config
+            sudo apt-get install -y libgtk-3-dev:arm64 libayatana-appindicator3-dev:arm64
+            sudo apt-get install -y gcc-aarch64-linux-gnu-base
           else
             sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
           fi
@@ -66,7 +69,9 @@ jobs:
       - name: Build binary (Linux ARM64)
         if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
         run: |
-          CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CC=aarch64-linux-gnu-gcc go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
+          export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH
+          export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig
+          CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CC=aarch64-linux-gnu-gcc PKG_CONFIG=aarch64-linux-gnu-pkg-config go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
         shell: bash
 
       - name: Build binary (Other)
