@@ -13,82 +13,112 @@ jobs:
     strategy:
       matrix:
         include:
-          - os: ubuntu-latest
+          - platform: linux/amd64
             goos: linux
             goarch: amd64
             name: ccowl-linux-amd64
-          - os: ubuntu-latest
+            dockerfile: |
+              FROM --platform=linux/amd64 ubuntu:24.04
+              RUN apt-get update && apt-get install -y \
+                  golang-1.24 \
+                  gcc \
+                  pkg-config \
+                  libgtk-3-dev \
+                  libayatana-appindicator3-dev
+              ENV PATH="/usr/lib/go-1.24/bin:$PATH"
+          - platform: linux/arm64
             goos: linux
             goarch: arm64
             name: ccowl-linux-arm64
-          - os: macos-latest
+            dockerfile: |
+              FROM --platform=linux/arm64 ubuntu:24.04
+              RUN apt-get update && apt-get install -y \
+                  golang-1.24 \
+                  gcc \
+                  pkg-config \
+                  libgtk-3-dev \
+                  libayatana-appindicator3-dev
+              ENV PATH="/usr/lib/go-1.24/bin:$PATH"
+          - platform: linux/amd64
             goos: darwin
             goarch: amd64
             name: ccowl-darwin-amd64
-          - os: macos-latest
+            dockerfile: |
+              FROM --platform=linux/amd64 golang:1.24-bullseye
+              RUN apt-get update && apt-get install -y \
+                  clang \
+                  libc6-dev \
+                  pkg-config
+              ENV CGO_ENABLED=1
+              ENV GOOS=darwin
+              ENV GOARCH=amd64
+              ENV CC=clang
+          - platform: linux/amd64
             goos: darwin
             goarch: arm64
             name: ccowl-darwin-arm64
-          - os: windows-latest
+            dockerfile: |
+              FROM --platform=linux/amd64 golang:1.24-bullseye
+              RUN apt-get update && apt-get install -y \
+                  clang \
+                  libc6-dev \
+                  pkg-config
+              ENV CGO_ENABLED=1
+              ENV GOOS=darwin
+              ENV GOARCH=arm64
+              ENV CC=clang
+          - platform: linux/amd64
             goos: windows
             goarch: amd64
             name: ccowl-windows-amd64.exe
-    runs-on: ${{ matrix.os }}
+            dockerfile: |
+              FROM --platform=linux/amd64 golang:1.24-bullseye
+              RUN apt-get update && apt-get install -y \
+                  gcc-mingw-w64-x86-64 \
+                  pkg-config
+              ENV CGO_ENABLED=1
+              ENV GOOS=windows
+              ENV GOARCH=amd64
+              ENV CC=x86_64-w64-mingw32-gcc
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Install Linux dependencies
-        if: matrix.os == 'ubuntu-latest'
+      - name: Build binary with Docker
         run: |
-          sudo apt-get update
-          if [ "${{ matrix.goarch }}" = "arm64" ]; then
-            sudo dpkg --add-architecture arm64
-            # Remove existing problematic security sources and add correct ones
-            sudo sed -i '/security\.ubuntu\.com.*arm64/d' /etc/apt/sources.list
-            echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-            echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-            echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-            sudo apt-get update
-            sudo apt-get install -y gcc-aarch64-linux-gnu pkg-config
-            sudo apt-get install -y libgtk-3-dev:arm64 libayatana-appindicator3-dev:arm64
-          else
-            sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
-          fi
+          cat > Dockerfile.build <<EOF
+          ${{ matrix.dockerfile }}
+          WORKDIR /src
+          COPY . .
+          RUN go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
+          EOF
+          docker buildx build --platform ${{ matrix.platform }} --output type=local,dest=. -f Dockerfile.build .
 
-      - name: Build binary (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          $env:CGO_ENABLED="1"
-          $env:GOOS="${{ matrix.goos }}"
-          $env:GOARCH="${{ matrix.goarch }}"
-          go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
-        shell: pwsh
+      - name: Make binary executable
+        run: chmod +x ${{ matrix.name }}
 
-      - name: Build binary (Linux ARM64)
-        if: matrix.goos == 'linux' && matrix.goarch == 'arm64'
+      - name: Compress binary (Linux/macOS)
+        if: matrix.goos != 'windows'
         run: |
-          export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig:$PKG_CONFIG_PATH
-          export PKG_CONFIG_LIBDIR=/usr/lib/aarch64-linux-gnu/pkgconfig
-          CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} CC=aarch64-linux-gnu-gcc PKG_CONFIG=aarch64-linux-gnu-pkg-config go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
-        shell: bash
+          tar -czf ${{ matrix.name }}.tar.gz ${{ matrix.name }}
+          sha256sum ${{ matrix.name }}.tar.gz > ${{ matrix.name }}.tar.gz.sha256
 
-      - name: Build binary (Other)
-        if: matrix.os != 'windows-latest' && !(matrix.goos == 'linux' && matrix.goarch == 'arm64')
+      - name: Compress binary (Windows)
+        if: matrix.goos == 'windows'
         run: |
-          CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
-        shell: bash
+          zip ${{ matrix.name }}.zip ${{ matrix.name }}
+          sha256sum ${{ matrix.name }}.zip > ${{ matrix.name }}.zip.sha256
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.name }}
-          path: ${{ matrix.name }}
+          path: |
+            ${{ matrix.name }}*
 
   release:
     needs: build
@@ -101,10 +131,13 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ccowl-linux-amd64/ccowl-linux-amd64
-            ccowl-linux-arm64/ccowl-linux-arm64
-            ccowl-darwin-amd64/ccowl-darwin-amd64
-            ccowl-darwin-arm64/ccowl-darwin-arm64
-            ccowl-windows-amd64.exe/ccowl-windows-amd64.exe
+            ccowl-linux-amd64/*
+            ccowl-linux-arm64/*
+            ccowl-darwin-amd64/*
+            ccowl-darwin-arm64/*
+            ccowl-windows-amd64.exe/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
