@@ -18,27 +18,25 @@ jobs:
             goarch: amd64
             name: ccowl-linux-amd64
             dockerfile: |
-              FROM --platform=linux/amd64 ubuntu:24.04
+              FROM --platform=linux/amd64 golang:1.24-bullseye
               RUN apt-get update && apt-get install -y \
-                  golang-1.24 \
                   gcc \
                   pkg-config \
                   libgtk-3-dev \
                   libayatana-appindicator3-dev
-              ENV PATH="/usr/lib/go-1.24/bin:$PATH"
+              ENV CGO_ENABLED=1
           - platform: linux/arm64
             goos: linux
             goarch: arm64
             name: ccowl-linux-arm64
             dockerfile: |
-              FROM --platform=linux/arm64 ubuntu:24.04
+              FROM --platform=linux/arm64 golang:1.24-bullseye
               RUN apt-get update && apt-get install -y \
-                  golang-1.24 \
                   gcc \
                   pkg-config \
                   libgtk-3-dev \
                   libayatana-appindicator3-dev
-              ENV PATH="/usr/lib/go-1.24/bin:$PATH"
+              ENV CGO_ENABLED=1
           - platform: linux/amd64
             goos: darwin
             goarch: amd64
