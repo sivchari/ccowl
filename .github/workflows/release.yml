@@ -94,8 +94,10 @@ jobs:
         run: |
           cat > Dockerfile.build <<EOF
           ${{ matrix.dockerfile }}
+          RUN useradd -m -u 1000 builder
+          USER builder
           WORKDIR /src
-          COPY . .
+          COPY --chown=builder:builder . .
           RUN go build -trimpath -ldflags="-s -w" -o ${{ matrix.name }} .
           EOF
           docker buildx build --platform ${{ matrix.platform }} --output type=local,dest=. -f Dockerfile.build .
