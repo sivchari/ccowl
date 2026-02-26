@@ -58,6 +58,76 @@ sudo apt install -y libayatana-appindicator3-dev pkg-config
    - Projected final costs
    - API call counts
 
+## Running as a Background Service
+
+### macOS (Launch Agent)
+
+To run CCOwl automatically at login without a terminal window:
+
+1. Create a Launch Agent plist file at `~/Library/LaunchAgents/com.ccowl.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.ccowl</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/path/to/ccowl</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/ccowl.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/ccowl.err</string>
+</dict>
+</plist>
+```
+
+2. Replace `/path/to/ccowl` with the actual path to your ccowl binary.
+
+3. Load the Launch Agent:
+```bash
+launchctl load ~/Library/LaunchAgents/com.ccowl.plist
+```
+
+4. To stop the service:
+```bash
+launchctl unload ~/Library/LaunchAgents/com.ccowl.plist
+```
+
+### Ubuntu/Linux (systemd)
+
+Create a systemd user service at `~/.config/systemd/user/ccowl.service`:
+
+```ini
+[Unit]
+Description=CCOwl - Claude Code Usage Monitor
+
+[Service]
+ExecStart=/path/to/ccowl
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
+
+Then enable and start:
+```bash
+systemctl --user enable ccowl
+systemctl --user start ccowl
+```
+
 ## Status Indicators
 
 - 🟢 **LOW**: < 300 tokens/min
