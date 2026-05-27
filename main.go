@@ -75,7 +75,7 @@ func t(en, ja string) string {
 }
 
 func getCCUsageData() (*CCUsageResponse, error) {
-	cmd := exec.Command("ccusage", "blocks", "--live", "--json", "--active")
+	cmd := exec.Command("ccusage", "blocks", "--json", "--active")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute ccusage command: %w", err)
