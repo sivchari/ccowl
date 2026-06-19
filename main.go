@@ -104,6 +104,17 @@ func formatNumber(num int) string {
 	}
 }
 
+func formatBurnRate(tokensPerMin float64) string {
+	switch {
+	case tokensPerMin >= 1000000:
+		return fmt.Sprintf("%.1fM", tokensPerMin/1000000)
+	case tokensPerMin >= 1000:
+		return fmt.Sprintf("%.1fk", tokensPerMin/1000)
+	default:
+		return fmt.Sprintf("%.0f", tokensPerMin)
+	}
+}
+
 func getBurnRateStatus(tokensPerMin float64) string {
 	switch {
 	case tokensPerMin < 300:
@@ -132,23 +143,70 @@ func getSessionProgress(startTime, endTime, actualEndTime string) (string, strin
 	return remainingStr, start.Format("15:04")
 }
 
-func formatDetailedInfo(block Block) []string {
+func formatWithCommas(n int) string {
+	s := fmt.Sprintf("%d", n)
+	if n < 0 {
+		s = s[1:]
+	}
+	var parts []string
+	for len(s) > 3 {
+		parts = append([]string{s[len(s)-3:]}, parts...)
+		s = s[:len(s)-3]
+	}
+	parts = append([]string{s}, parts...)
+	out := strings.Join(parts, ",")
+	if n < 0 {
+		out = "-" + out
+	}
+	return out
+}
+
+func modelsList(models []string) string {
+	if len(models) == 0 {
+		return t("n/a", "なし")
+	}
+	return strings.Join(models, ", ")
+}
+
+// formatDetailedInfo returns parallel slices of menu titles and their tooltips.
+func formatDetailedInfo(block Block) (titles []string, tooltips []string) {
 	remaining, startTime := getSessionProgress(block.StartTime, block.EndTime, block.ActualEndTime)
 	burnRateStatus := getBurnRateStatus(block.BurnRate.TokensPerMinute)
+	endTime := ""
+	if end, err := time.Parse(time.RFC3339, block.EndTime); err == nil {
+		endTime = end.Format("15:04")
+	}
+	tc := block.TokenCounts
 
-	return []string{
+	titles = []string{
 		fmt.Sprintf("⏱️ %s: %s %s / %s %s",
 			t("Session", "セッション"),
 			t("Started", "開始"), startTime,
 			t("Remaining", "残り"), remaining),
 		"",
 		fmt.Sprintf("💰 %s: $%.2f", t("Current Cost", "現在の費用"), block.CostUSD),
-		fmt.Sprintf("🔥 %s: %s (%.0f token/min)", t("Burn Rate", "消費ペース"), burnRateStatus, block.BurnRate.TokensPerMinute),
+		fmt.Sprintf("🔥 %s: %s (%s %s)", t("Burn Rate", "消費ペース"), burnRateStatus, formatBurnRate(block.BurnRate.TokensPerMinute), t("tokens/min", "トークン/分")),
 		fmt.Sprintf("📊 %s: %s", t("Tokens Used", "使用トークン"), formatNumber(block.TotalTokens)),
 		"",
 		fmt.Sprintf("📈 %s: $%.2f", t("Projected Cost", "予想最終費用"), block.Projection.TotalCost),
 		fmt.Sprintf("🎯 %s: %s%s", t("API Calls", "API呼び出し"), formatNumber(block.Entries), t("", "回")),
 	}
+
+	tooltips = []string{
+		fmt.Sprintf("%s–%s · %s: %s", startTime, endTime, t("Models", "モデル"), modelsList(block.Models)),
+		"",
+		fmt.Sprintf("$%.2f/%s", block.BurnRate.CostPerHour, t("hour", "時間")),
+		fmt.Sprintf("%s %s · $%.2f/%s", formatWithCommas(int(block.BurnRate.TokensPerMinute)), t("tokens/min", "トークン/分"), block.BurnRate.CostPerHour, t("hour", "時間")),
+		fmt.Sprintf("%s: %s · %s: %s · %s: %s · %s: %s",
+			t("Input", "入力"), formatNumber(tc.InputTokens),
+			t("Output", "出力"), formatNumber(tc.OutputTokens),
+			t("Cache write", "キャッシュ書込"), formatNumber(tc.CacheCreationInputTokens),
+			t("Cache read", "キャッシュ読込"), formatNumber(tc.CacheReadInputTokens)),
+		"",
+		fmt.Sprintf("%s %s · %s %d %s", t("Projected", "予想"), formatNumber(block.Projection.TotalTokens), t("tokens,", "トークン、"), block.Projection.RemainingMinutes, t("min left", "分残り")),
+		fmt.Sprintf("%s: %s", t("Models", "モデル"), modelsList(block.Models)),
+	}
+	return titles, tooltips
 }
 
 func main() {
@@ -196,13 +254,13 @@ func updateStatus() {
 	if err != nil {
 		log.Printf("Error getting usage data: %v", err)
 		systray.SetTitle(fmt.Sprintf("🦉 %s", t("Error", "エラー")))
-		updateMenuItems([]string{fmt.Sprintf("❌ %s", t("Failed to fetch data", "データを取得できませんでした"))})
+		updateMenuItems([]string{fmt.Sprintf("❌ %s", t("Failed to fetch data", "データを取得できませんでした"))}, nil)
 		return
 	}
 
 	if len(data.Blocks) == 0 {
 		systray.SetTitle(fmt.Sprintf("🦉 %s", t("No Data", "データなし")))
-		updateMenuItems([]string{fmt.Sprintf("⚠️ %s", t("No data available", "データがありません"))})
+		updateMenuItems([]string{fmt.Sprintf("⚠️ %s", t("No data available", "データがありません"))}, nil)
 		return
 	}
 
@@ -211,7 +269,7 @@ func updateStatus() {
 
 	if activeBlock == nil {
 		systray.SetTitle(fmt.Sprintf("🦉 %s", t("Inactive", "非アクティブ")))
-		updateMenuItems([]string{fmt.Sprintf("💤 %s", t("No active session", "アクティブなセッションがありません"))})
+		updateMenuItems([]string{fmt.Sprintf("💤 %s", t("No active session", "アクティブなセッションがありません"))}, nil)
 		return
 	}
 
@@ -220,18 +278,23 @@ func updateStatus() {
 	systray.SetTitle(compactTitle)
 
 	// Update detailed menu items
-	detailedInfo := formatDetailedInfo(*activeBlock)
-	updateMenuItems(detailedInfo)
+	titles, tooltips := formatDetailedInfo(*activeBlock)
+	updateMenuItems(titles, tooltips)
 }
 
-func updateMenuItems(info []string) {
+func updateMenuItems(titles []string, tooltips []string) {
 	for i, item := range menuItems {
-		if i < len(info) {
-			if info[i] == "" {
+		if i < len(titles) {
+			if titles[i] == "" {
 				item.Hide()
 			} else {
 				item.Show()
-				item.SetTitle(info[i])
+				item.SetTitle(titles[i])
+				tip := titles[i]
+				if i < len(tooltips) && tooltips[i] != "" {
+					tip = tooltips[i]
+				}
+				item.SetTooltip(tip)
 			}
 		} else {
 			item.Hide()
